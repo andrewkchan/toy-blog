@@ -2,7 +2,7 @@
 
 import * as fs from 'fs'
 import * as path from 'path'
-import yargs from 'yargs'
+import * as yargs from 'yargs'
 
 import { JSDOM } from 'jsdom'
 
@@ -25,16 +25,16 @@ function makePostHTML(index: number, posts: Post[], templateDOM: JSDOM): string 
 
   let navString  = '<navigation class="toyb-nav"><ul>'
   for (let post of posts) {
-    navString += `<li><a href="posts/${post.filename}">${post.title}</a></li>`
+    navString += `<li><a href="./${post.filename}">${post.title}</a></li>`
   }
   navString += '</ul></navigation>'
 
-  const postTitleString = `<h1 class="toyb-title">${post.title}</h1>`
-  const postDateString = `<h3 class="toyb-subtitle">${post.date.toDateString()}</h3>`
+  const postTitleString = `${post.title}`
+  const postDateString = `${post.date.toDateString()}`
   const postContentString = `<article class="toyb-article">${post.inputElement.innerHTML}</article>`
 
   function visit(element: Element) {
-    switch (element.nodeName) {
+    switch (element.tagName?.toLowerCase()) {
       case 'toyb-nav': {
         element.outerHTML = navString
         break
@@ -54,9 +54,7 @@ function makePostHTML(index: number, posts: Post[], templateDOM: JSDOM): string 
       default: {
         if (element.childNodes) {
           for (let child of element.childNodes) {
-            if (child instanceof Element) {
-              visit(child)
-            }
+            visit(child as Element)
           }
         }
       }
@@ -75,14 +73,12 @@ function makeIndexHTML(posts: Post[], indexDOM: JSDOM): string {
   }
   navString += '</ul></navigation>'
   function visit(element: Element) {
-    if (element.nodeName === 'toyb-nav') {
+    if (element.tagName?.toLowerCase() === 'toyb-nav') {
       element.outerHTML = navString
     } else {
       if (element.childNodes) {
         for (let child of element.childNodes) {
-          if (child instanceof Element) {
-            visit(child)
-          }
+          visit(child as Element)
         }
       }
     }
@@ -97,19 +93,23 @@ export function main(): number {
       type: 'string',
       describe:
         "The template file to use for index page.",
+      demandOption: true,
     })
     .option('post-template', {
       type: 'string',
       describe:
         "The template file to use for posts.",
+      demandOption: true,
     })
     .option('posts', {
       type: 'string',
       describe: 'Directory containing posts.',
+      demandOption: true,
     })
     .option('output', {
       type: 'string',
       describe: 'Directory to put generated HTML files and other output.',
+      demandOption: true,
     })
     .option('clean', {
       type: 'boolean',
@@ -155,55 +155,48 @@ export function main(): number {
   const outputDir = args['output']!
   // First, generate all non-post output files, and collect all posts so that we can generate correct links, etc. later
   const posts: Post[] = []
-  fs.readdir(args['posts']!, function (err, files) {
-    if (err) {
-      console.error("Could not list the directory.", err)
-      process.exit(1)
-    }
+  const files = fs.readdirSync(args['posts']!, { recursive: false, encoding: 'utf8' })
+  files.forEach(function (filename) {
+    var filePath = path.join(args['posts']!, filename)
+    const stat = fs.statSync(filePath)
 
-    files.forEach(function (filename) {
-      var filePath = path.join(args['posts']!, filename)
-      fs.stat(filePath, function (error, stat) {
-        if (error) {
-          throw error
-        }
-
-        if (stat.isFile()) {
-          if (filePath.endsWith(".html")) {
-            const fileHTML = fs.readFileSync(filePath, 'utf8')
-            const fileDOM = new JSDOM(fileHTML)
-            const postElement = fileDOM.window.document.querySelector('toyb-post')
-            if (postElement) {
-              const titleElement = postElement.querySelector('toyb-title')
-              if (titleElement === null || titleElement.innerHTML === '') {
-                throw new Error(`Post with input file ${filename} must have a non-empty <toyb-title> tag`)
-              }
-              const dateElement = postElement.querySelector('toyb-date')
-              const dateTimestamp = Date.parse(dateElement?.innerHTML || '')
-              if (Number.isNaN(dateTimestamp)) {
-                throw new Error(`Post with input file ${filename} must have a valid <toyb-date> tag`)
-              }
-              // Strip the title and date elements so they don't appear directly in HTML output
-              postElement.removeChild(titleElement)
-              postElement.removeChild(dateElement!)
-              posts.push({
-                filename,
-                title: titleElement.innerHTML,
-                date: new Date(dateTimestamp),
-                inputElement: postElement,
-                inputDOM: fileDOM,
-              })
-            } else {
-              fs.writeFileSync(path.join(outputDir, 'posts', filename), fileHTML)
-            }
-          } else {
-            fs.cpSync(filePath, path.join(outputDir, 'posts', filename))
+    if (stat.isFile()) {
+      if (filePath.endsWith(".html")) {
+        const fileHTML = fs.readFileSync(filePath, 'utf8')
+        const fileDOM = new JSDOM(fileHTML)
+        const postElement = fileDOM.window.document.querySelector('toyb-post')
+        if (postElement) {
+          const titleElement = postElement.querySelector('toyb-title')
+          if (titleElement === null || titleElement.innerHTML === '') {
+            throw new Error(`Post with input file ${filename} must have a non-empty <toyb-title> tag`)
           }
-        } else if (stat.isDirectory()) {
-          fs.cpSync(filePath, path.join(outputDir, 'posts', filename), {recursive: true})
+          const dateElement = postElement.querySelector('toyb-date')
+          const dateTimestamp = Date.parse(dateElement?.innerHTML || '')
+          if (Number.isNaN(dateTimestamp)) {
+            throw new Error(`Post with input file ${filename} must have a valid <toyb-date> tag`)
+          }
+          // Strip the title and date elements so they don't appear directly in HTML output
+          postElement.removeChild(titleElement)
+          postElement.removeChild(dateElement!)
+          posts.push({
+            filename,
+            title: titleElement.innerHTML,
+            date: new Date(dateTimestamp),
+            inputElement: postElement,
+            inputDOM: fileDOM,
+          })
+        } else {
+          fs.writeFileSync(path.join(outputDir, 'posts', filename), fileHTML)
+          console.log(`Copied file ${filePath} to ${path.join(outputDir, 'posts', filename)}`)
         }
-      })
-    })
+      } else {
+        fs.cpSync(filePath, path.join(outputDir, 'posts', filename))
+        console.log(`Copied file ${filePath} to ${path.join(outputDir, 'posts', filename)}`)
+      }
+    } else if (stat.isDirectory()) {
+      fs.cpSync(filePath, path.join(outputDir, 'posts', filename), {recursive: true})
+      console.log(`Copied directory ${filePath} to ${path.join(outputDir, 'posts', filename)}`)
+    }
   })
 
   // Now generate all HTML files which depend on posts for links etc. (including posts themselves)
@@ -216,9 +209,12 @@ export function main(): number {
   for (let i = 0; i < posts.length; i++) {
     const postHTML = makePostHTML(i, posts, postTemplate)
     fs.writeFileSync(path.join(outputDir, 'posts', posts[i].filename), postHTML)
+    console.log(`Generated post ${path.join(outputDir, 'posts', posts[i].filename)} for title ${posts[i].title}`)
   }
   const indexHTML = makeIndexHTML(posts, indexTemplate)
   fs.writeFileSync(path.join(outputDir, 'index.html'), indexHTML)
+  console.log(`Generated index ${path.join(outputDir, 'index.html')}`)
+  console.log("Done!")
 
   return 0
 }

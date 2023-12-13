@@ -1,0 +1,1 @@
+document.getElementById("shibe-caption").innerHTML = "shibe!!!!!!";
