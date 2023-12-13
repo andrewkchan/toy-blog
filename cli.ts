@@ -153,6 +153,10 @@ export function main(): number {
   // - A post must include <toyb-date></toyb-date> tag inside the <toyb-post></toyb-post>, contents must be parseable by Date.parse()
   // - A post must include <toyb-title></toyb-title> tag inside the <toyb-post></toyb-post> with non-empty post title
   const outputDir = args['output']!
+  if (args['clean']) {
+    fs.rmSync(outputDir, { recursive: true, force: true })
+    fs.mkdirSync(outputDir, { recursive: true })
+  }
   // First, generate all non-post output files, and collect all posts so that we can generate correct links, etc. later
   const posts: Post[] = []
   const files = fs.readdirSync(args['posts']!, { recursive: false, encoding: 'utf8' })
