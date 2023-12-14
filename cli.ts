@@ -40,6 +40,10 @@ function makePostHTML(index: number, posts: Post[], templateDOM: JSDOM): string 
         element.outerHTML = navString
         break
       }
+      case 'title': {
+        element.innerHTML = postTitleString
+        break
+      }
       case 'toyb-title': {
         element.outerHTML = postTitleString
         break
@@ -53,6 +57,11 @@ function makePostHTML(index: number, posts: Post[], templateDOM: JSDOM): string 
         break
       }
       case 'head': {
+        if (element.childNodes) {
+          for (let child of element.childNodes) {
+            visit(child as Element)
+          }
+        }
         if (post.headElement) {
           element.innerHTML += post.headElement.innerHTML
         }

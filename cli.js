@@ -52,6 +52,10 @@ function makePostHTML(index, posts, templateDOM) {
                 element.outerHTML = navString;
                 break;
             }
+            case 'title': {
+                element.innerHTML = postTitleString;
+                break;
+            }
             case 'toyb-title': {
                 element.outerHTML = postTitleString;
                 break;
@@ -65,6 +69,11 @@ function makePostHTML(index, posts, templateDOM) {
                 break;
             }
             case 'head': {
+                if (element.childNodes) {
+                    for (let child of element.childNodes) {
+                        visit(child);
+                    }
+                }
                 if (post.headElement) {
                     element.innerHTML += post.headElement.innerHTML;
                 }
