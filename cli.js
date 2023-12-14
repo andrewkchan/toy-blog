@@ -64,6 +64,12 @@ function makePostHTML(index, posts, templateDOM) {
                 element.outerHTML = postContentString;
                 break;
             }
+            case 'head': {
+                if (post.headElement) {
+                    element.innerHTML += post.headElement.innerHTML;
+                }
+                break;
+            }
             default: {
                 if (element.childNodes) {
                     for (let child of element.childNodes) {
@@ -159,6 +165,7 @@ function main() {
     // - All other files (including nested files) in directory are output to [output-dir]/posts/[file-name] verbatim
     // - A post must include <toyb-date></toyb-date> tag inside the <toyb-post></toyb-post>, contents must be parseable by Date.parse()
     // - A post must include <toyb-title></toyb-title> tag inside the <toyb-post></toyb-post> with non-empty post title
+    // - A post may include <toyb-head></toyb-head> tag inside the <toyb-post></toyb-post> which will be added to the <head> of the post
     const outputDir = args['output'];
     if (args['clean']) {
         fs.rmSync(outputDir, { recursive: true, force: true });
@@ -185,13 +192,18 @@ function main() {
                     if (Number.isNaN(dateTimestamp)) {
                         throw new Error(`Post with input file ${filename} must have a valid <toyb-date> tag`);
                     }
-                    // Strip the title and date elements so they don't appear directly in HTML output
+                    const headElement = postElement.querySelector('toyb-head');
+                    // Strip the title, date, and head elements so they don't appear directly in HTML output
                     postElement.removeChild(titleElement);
                     postElement.removeChild(dateElement);
+                    if (headElement) {
+                        postElement.removeChild(headElement);
+                    }
                     posts.push({
                         filename,
                         title: titleElement.innerHTML,
                         date: new Date(dateTimestamp),
+                        headElement,
                         inputElement: postElement,
                         inputDOM: fileDOM,
                     });
