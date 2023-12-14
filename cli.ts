@@ -77,7 +77,7 @@ function makePostHTML(index: number, posts: Post[], templateDOM: JSDOM): string 
     }
   }
   visit(postDOM.window.document.documentElement)
-  return postDOM.window.document.documentElement.outerHTML
+  return '<!DOCTYPE html>' + postDOM.window.document.documentElement.outerHTML
 }
 
 // Index template
@@ -100,7 +100,7 @@ function makeIndexHTML(posts: Post[], indexDOM: JSDOM): string {
     }
   }
   visit(indexDOM.window.document.documentElement)
-  return indexDOM.window.document.documentElement.outerHTML
+  return '<!DOCTYPE html>' + indexDOM.window.document.documentElement.outerHTML
 }
 
 export function main(): number {

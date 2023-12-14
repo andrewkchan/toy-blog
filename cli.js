@@ -89,7 +89,7 @@ function makePostHTML(index, posts, templateDOM) {
         }
     }
     visit(postDOM.window.document.documentElement);
-    return postDOM.window.document.documentElement.outerHTML;
+    return '<!DOCTYPE html>' + postDOM.window.document.documentElement.outerHTML;
 }
 // Index template
 // - It may include <toyb-nav></toyb-nav> tag which will output the navigation links
@@ -113,7 +113,7 @@ function makeIndexHTML(posts, indexDOM) {
         }
     }
     visit(indexDOM.window.document.documentElement);
-    return indexDOM.window.document.documentElement.outerHTML;
+    return '<!DOCTYPE html>' + indexDOM.window.document.documentElement.outerHTML;
 }
 function main() {
     const args = yargs
