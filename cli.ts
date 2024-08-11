@@ -13,13 +13,19 @@ interface Post {
   headElement: Element | null
   inputElement: Element
   inputDOM: JSDOM
+  isStarred: boolean
+  isDraft: boolean
 }
 
 // Post template
-// - It must have exactly 1 <toyb-article></toyb-article> with no content inside, which will output the post content
-// - It may include <toyb-date></toyb-date> tag which will output the post date
-// - It may include <toyb-title></toyb-title> tag which will output the post title
-// - It may include <toyb-nav></toyb-nav> tag which will output the navigation links
+// Required:
+// - Exactly 1 <toyb-article></toyb-article> with no content inside, which will output the post content
+// Optional:
+// - <toyb-date></toyb-date> tag which will output the post date
+// - <toyb-title></toyb-title> tag which will output the post title
+// - <toyb-nav></toyb-nav> tag which will output the navigation links
+// - <toyb-draft></toyb-draft> tag - if included, post is considered a draft and will be accessible via ./posts URL, but not added to index
+// - <toyb-star></toyb-star> tag - if included, post is starred in the index
 function makePostHTML(index: number, posts: Post[], templateDOM: JSDOM): string {
   const post = posts[index]
   const postDOM = new JSDOM(templateDOM.window.document.documentElement.outerHTML)
@@ -81,10 +87,14 @@ function makePostHTML(index: number, posts: Post[], templateDOM: JSDOM): string 
 }
 
 // Index template
-// - It may include <toyb-nav></toyb-nav> tag which will output the navigation links
+// Optional:
+// - <toyb-nav></toyb-nav> tag which will output the navigation links
 function makeIndexHTML(posts: Post[], indexDOM: JSDOM): string {
   let navString  = '<navigation><ul class="nav">'
   for (let post of posts) {
+    if (post.isDraft) {
+      continue
+    }
     navString += `<li><a href="posts/${post.filename}">${post.title}</a></li>`
   }
   navString += '</ul></navigation>'
@@ -203,6 +213,8 @@ export function main(): number {
           if (headElement) {
             postElement.removeChild(headElement)
           }
+          const isDraft = !!postElement.querySelector('toyb-draft')
+          const isStarred = !!postElement.querySelector('toyb-star')
           posts.push({
             filename,
             title: titleElement.innerHTML,
@@ -210,6 +222,8 @@ export function main(): number {
             headElement,
             inputElement: postElement,
             inputDOM: fileDOM,
+            isDraft,
+            isStarred,
           })
         } else {
           fs.writeFileSync(path.join(outputDir, 'posts', filename), fileHTML)

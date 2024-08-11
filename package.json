@@ -1,6 +1,6 @@
 {
   "name": "toy-blog-engine",
-  "version": "0.0.1",
+  "version": "0.0.2",
   "description": "Toy blog engine that lets you specify a template and publish HTML/JS posts using it with some simple navigation features.",
   "license": "MIT",
   "bin": {
