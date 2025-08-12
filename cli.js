@@ -104,7 +104,7 @@ function makeIndexHTML(posts, indexDOM) {
         if (post.isDraft) {
             continue;
         }
-        navString += `<li><span class="toyb-nav-li-date">${post.date.toISOString().split('T')[0]}</span> • <a href="./${post.filename}">${post.title}</a></li>`;
+        navString += `<li><span class="toyb-nav-li-date">${post.date.toISOString().split('T')[0]}</span> • <a href="./posts/${post.filename}">${post.title}</a></li>`;
     }
     navString += '</ul></navigation>';
     function visit(element) {
