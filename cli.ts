@@ -90,7 +90,7 @@ function makePostHTML(index: number, posts: Post[], templateDOM: JSDOM): string 
 // Optional:
 // - <toyb-nav></toyb-nav> tag which will output the navigation links
 function makeIndexHTML(posts: Post[], indexDOM: JSDOM): string {
-  let navString  = '<navigation><ul class="nav">'
+  let navString  = '<navigation class="toyb-nav"><ul class="nav">'
   for (let post of posts) {
     if (post.isDraft) {
       continue
