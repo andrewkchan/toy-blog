@@ -43,7 +43,7 @@ function makePostHTML(index, posts, templateDOM) {
     const postDOM = new jsdom_1.JSDOM(templateDOM.window.document.documentElement.outerHTML);
     let navString = '<navigation class="toyb-nav"><ul>';
     for (let post of posts) {
-        navString += `<li><span class="toyb-nav-li-date">${post.date.toISOString().split('T')[0]}</span> • <a href="./${post.filename}">${post.title}</a></li>`;
+        navString += `<li><span class="toyb-nav-li-date">${post.date.toISOString().split('T')[0]}</span> <span class="toyb-nav-li-link"><a href="./${post.filename}">${post.title}</a></span></li>`;
     }
     navString += '</ul></navigation>';
     const postTitleString = `${post.title}`;
@@ -104,7 +104,7 @@ function makeIndexHTML(posts, indexDOM) {
         if (post.isDraft) {
             continue;
         }
-        navString += `<li><span class="toyb-nav-li-date">${post.date.toISOString().split('T')[0]}</span> • <a href="./posts/${post.filename}">${post.title}</a></li>`;
+        navString += `<li><span class="toyb-nav-li-date">${post.date.toISOString().split('T')[0]}</span> <span class="toyb-nav-li-link"><a href="./posts/${post.filename}">${post.title}</a></span></li>`;
     }
     navString += '</ul></navigation>';
     function visit(element) {
