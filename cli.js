@@ -29,6 +29,30 @@ const fs = __importStar(require("fs"));
 const path = __importStar(require("path"));
 const yargs = __importStar(require("yargs"));
 const jsdom_1 = require("jsdom");
+// "Box with arrow" icon shown next to external posts in navigation. Uses currentColor so it can be styled via CSS.
+const EXTERNAL_ICON_SVG = '<svg xmlns="http://www.w3.org/2000/svg" width="0.8em" height="0.8em" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6"></path><polyline points="15 3 21 3 21 9"></polyline><line x1="10" y1="14" x2="21" y2="3"></line></svg>';
+function isValidURL(value) {
+    try {
+        new URL(value);
+        return true;
+    }
+    catch (_a) {
+        return false;
+    }
+}
+function escapeAttribute(value) {
+    return value.replace(/&/g, '&amp;').replace(/"/g, '&quot;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+}
+// Navigation list item for a post. `postsPath` is the relative path from the page being generated to the posts directory.
+// External posts link directly to their URL and are marked with the `toyb-nav-li-external` class and an icon.
+function makeNavItemHTML(post, postsPath) {
+    const dateString = `<span class="toyb-nav-li-date">${post.date.toISOString().split('T')[0]}</span>`;
+    if (post.externalURL !== null) {
+        const iconString = `<span class="toyb-nav-external-icon" title="External post">${EXTERNAL_ICON_SVG}</span>`;
+        return `<li class="toyb-nav-li-external">${dateString} <span class="toyb-nav-li-link"><a href="${escapeAttribute(post.externalURL)}">${post.title}</a> ${iconString}</span></li>`;
+    }
+    return `<li>${dateString} <span class="toyb-nav-li-link"><a href="${postsPath}${post.filename}">${post.title}</a></span></li>`;
+}
 // Post template
 // Required:
 // - Exactly 1 <toyb-article></toyb-article> with no content inside, which will output the post content
@@ -43,7 +67,7 @@ function makePostHTML(index, posts, templateDOM) {
     const postDOM = new jsdom_1.JSDOM(templateDOM.window.document.documentElement.outerHTML);
     let navString = '<navigation class="toyb-nav"><ul>';
     for (let post of posts) {
-        navString += `<li><span class="toyb-nav-li-date">${post.date.toISOString().split('T')[0]}</span> <span class="toyb-nav-li-link"><a href="./${post.filename}">${post.title}</a></span></li>`;
+        navString += makeNavItemHTML(post, './');
     }
     navString += '</ul></navigation>';
     const postTitleString = `${post.title}`;
@@ -104,7 +128,7 @@ function makeIndexHTML(posts, indexDOM) {
         if (post.isDraft) {
             continue;
         }
-        navString += `<li><span class="toyb-nav-li-date">${post.date.toISOString().split('T')[0]}</span> <span class="toyb-nav-li-link"><a href="./posts/${post.filename}">${post.title}</a></span></li>`;
+        navString += makeNavItemHTML(post, './posts/');
     }
     navString += '</ul></navigation>';
     function visit(element) {
@@ -122,6 +146,19 @@ function makeIndexHTML(posts, indexDOM) {
     }
     visit(indexDOM.window.document.documentElement);
     return '<!DOCTYPE html>' + indexDOM.window.document.documentElement.outerHTML;
+}
+// Validates and returns the <toyb-title> and <toyb-date> tags of a <toyb-post> or <toyb-external> element
+function parsePostMetadata(element, filename) {
+    const titleElement = element.querySelector('toyb-title');
+    if (titleElement === null || titleElement.innerHTML === '') {
+        throw new Error(`Post with input file ${filename} must have a non-empty <toyb-title> tag`);
+    }
+    const dateElement = element.querySelector('toyb-date');
+    const dateTimestamp = Date.parse((dateElement === null || dateElement === void 0 ? void 0 : dateElement.innerHTML) || '');
+    if (dateElement === null || Number.isNaN(dateTimestamp)) {
+        throw new Error(`Post with input file ${filename} must have a valid <toyb-date> tag`);
+    }
+    return { titleElement, dateElement, dateTimestamp };
 }
 function main() {
     const args = yargs
@@ -183,6 +220,10 @@ function main() {
     // - A post must include <toyb-date></toyb-date> tag inside the <toyb-post></toyb-post>, contents must be parseable by Date.parse()
     // - A post must include <toyb-title></toyb-title> tag inside the <toyb-post></toyb-post> with non-empty post title
     // - A post may include <toyb-head></toyb-head> tag inside the <toyb-post></toyb-post> which will be added to the <head> of the post
+    // - Each HTML file in directory is treated as an external post if it contains a <toyb-external></toyb-external> tag,
+    //   this will generate a link in the navigation to an external URL (marked with an icon), but no HTML file.
+    // - An external post must include <toyb-title> and <toyb-date> tags as above, as well as a <toyb-url></toyb-url> tag
+    //   containing the absolute URL to link to. It may include <toyb-draft> and <toyb-star> tags. Other content is ignored.
     const outputDir = args['output'];
     if (args['clean']) {
         fs.rmSync(outputDir, { recursive: true, force: true });
@@ -192,6 +233,7 @@ function main() {
     const posts = [];
     const files = fs.readdirSync(args['posts'], { recursive: false, encoding: 'utf8' });
     files.forEach(function (filename) {
+        var _a;
         var filePath = path.join(args['posts'], filename);
         const stat = fs.statSync(filePath);
         if (stat.isFile()) {
@@ -199,16 +241,31 @@ function main() {
                 const fileHTML = fs.readFileSync(filePath, 'utf8');
                 const fileDOM = new jsdom_1.JSDOM(fileHTML);
                 const postElement = fileDOM.window.document.querySelector('toyb-post');
-                if (postElement) {
-                    const titleElement = postElement.querySelector('toyb-title');
-                    if (titleElement === null || titleElement.innerHTML === '') {
-                        throw new Error(`Post with input file ${filename} must have a non-empty <toyb-title> tag`);
+                const externalElement = fileDOM.window.document.querySelector('toyb-external');
+                if (postElement && externalElement) {
+                    throw new Error(`Input file ${filename} cannot contain both a <toyb-post> and a <toyb-external> tag`);
+                }
+                if (externalElement) {
+                    const { titleElement, dateTimestamp } = parsePostMetadata(externalElement, filename);
+                    const urlElement = externalElement.querySelector('toyb-url');
+                    const externalURL = ((_a = urlElement === null || urlElement === void 0 ? void 0 : urlElement.textContent) === null || _a === void 0 ? void 0 : _a.trim()) || '';
+                    if (!isValidURL(externalURL)) {
+                        throw new Error(`External post with input file ${filename} must have a <toyb-url> tag containing a valid absolute URL`);
                     }
-                    const dateElement = postElement.querySelector('toyb-date');
-                    const dateTimestamp = Date.parse((dateElement === null || dateElement === void 0 ? void 0 : dateElement.innerHTML) || '');
-                    if (Number.isNaN(dateTimestamp)) {
-                        throw new Error(`Post with input file ${filename} must have a valid <toyb-date> tag`);
-                    }
+                    posts.push({
+                        filename,
+                        title: titleElement.innerHTML,
+                        date: new Date(dateTimestamp),
+                        headElement: null,
+                        inputElement: externalElement,
+                        inputDOM: fileDOM,
+                        isDraft: !!externalElement.querySelector('toyb-draft'),
+                        isStarred: !!externalElement.querySelector('toyb-star'),
+                        externalURL,
+                    });
+                }
+                else if (postElement) {
+                    const { titleElement, dateElement, dateTimestamp } = parsePostMetadata(postElement, filename);
                     const headElement = postElement.querySelector('toyb-head');
                     // Strip the title, date, and head elements so they don't appear directly in HTML output
                     postElement.removeChild(titleElement);
@@ -227,6 +284,7 @@ function main() {
                         inputDOM: fileDOM,
                         isDraft,
                         isStarred,
+                        externalURL: null,
                     });
                 }
                 else {
@@ -252,6 +310,9 @@ function main() {
         return a.date.getTime() - b.date.getTime();
     });
     for (let i = 0; i < posts.length; i++) {
+        if (posts[i].externalURL !== null) {
+            continue;
+        }
         const postHTML = makePostHTML(i, posts, postTemplate);
         fs.writeFileSync(path.join(outputDir, 'posts', posts[i].filename), postHTML);
         console.log(`Generated post ${path.join(outputDir, 'posts', posts[i].filename)} for title ${posts[i].title}`);

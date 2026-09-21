@@ -15,6 +15,35 @@ interface Post {
   inputDOM: JSDOM
   isStarred: boolean
   isDraft: boolean
+  // If non-null, this is an external post which links to this URL instead of generating a page
+  externalURL: string | null
+}
+
+// "Box with arrow" icon shown next to external posts in navigation. Uses currentColor so it can be styled via CSS.
+const EXTERNAL_ICON_SVG = '<svg xmlns="http://www.w3.org/2000/svg" width="0.8em" height="0.8em" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6"></path><polyline points="15 3 21 3 21 9"></polyline><line x1="10" y1="14" x2="21" y2="3"></line></svg>'
+
+function isValidURL(value: string): boolean {
+  try {
+    new URL(value)
+    return true
+  } catch {
+    return false
+  }
+}
+
+function escapeAttribute(value: string): string {
+  return value.replace(/&/g, '&amp;').replace(/"/g, '&quot;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
+}
+
+// Navigation list item for a post. `postsPath` is the relative path from the page being generated to the posts directory.
+// External posts link directly to their URL and are marked with the `toyb-nav-li-external` class and an icon.
+function makeNavItemHTML(post: Post, postsPath: string): string {
+  const dateString = `<span class="toyb-nav-li-date">${post.date.toISOString().split('T')[0]}</span>`
+  if (post.externalURL !== null) {
+    const iconString = `<span class="toyb-nav-external-icon" title="External post">${EXTERNAL_ICON_SVG}</span>`
+    return `<li class="toyb-nav-li-external">${dateString} <span class="toyb-nav-li-link"><a href="${escapeAttribute(post.externalURL)}">${post.title}</a> ${iconString}</span></li>`
+  }
+  return `<li>${dateString} <span class="toyb-nav-li-link"><a href="${postsPath}${post.filename}">${post.title}</a></span></li>`
 }
 
 // Post template
@@ -32,7 +61,7 @@ function makePostHTML(index: number, posts: Post[], templateDOM: JSDOM): string 
 
   let navString  = '<navigation class="toyb-nav"><ul>'
   for (let post of posts) {
-    navString += `<li><span class="toyb-nav-li-date">${post.date.toISOString().split('T')[0]}</span> <span class="toyb-nav-li-link"><a href="./${post.filename}">${post.title}</a></span></li>`
+    navString += makeNavItemHTML(post, './')
   }
   navString += '</ul></navigation>'
 
@@ -95,7 +124,7 @@ function makeIndexHTML(posts: Post[], indexDOM: JSDOM): string {
     if (post.isDraft) {
       continue
     }
-    navString += `<li><span class="toyb-nav-li-date">${post.date.toISOString().split('T')[0]}</span> <span class="toyb-nav-li-link"><a href="./posts/${post.filename}">${post.title}</a></span></li>`
+    navString += makeNavItemHTML(post, './posts/')
   }
   navString += '</ul></navigation>'
   function visit(element: Element) {
@@ -111,6 +140,20 @@ function makeIndexHTML(posts: Post[], indexDOM: JSDOM): string {
   }
   visit(indexDOM.window.document.documentElement)
   return '<!DOCTYPE html>' + indexDOM.window.document.documentElement.outerHTML
+}
+
+// Validates and returns the <toyb-title> and <toyb-date> tags of a <toyb-post> or <toyb-external> element
+function parsePostMetadata(element: Element, filename: string): { titleElement: Element, dateElement: Element, dateTimestamp: number } {
+  const titleElement = element.querySelector('toyb-title')
+  if (titleElement === null || titleElement.innerHTML === '') {
+    throw new Error(`Post with input file ${filename} must have a non-empty <toyb-title> tag`)
+  }
+  const dateElement = element.querySelector('toyb-date')
+  const dateTimestamp = Date.parse(dateElement?.innerHTML || '')
+  if (dateElement === null || Number.isNaN(dateTimestamp)) {
+    throw new Error(`Post with input file ${filename} must have a valid <toyb-date> tag`)
+  }
+  return { titleElement, dateElement, dateTimestamp }
 }
 
 export function main(): number {
@@ -179,6 +222,10 @@ export function main(): number {
   // - A post must include <toyb-date></toyb-date> tag inside the <toyb-post></toyb-post>, contents must be parseable by Date.parse()
   // - A post must include <toyb-title></toyb-title> tag inside the <toyb-post></toyb-post> with non-empty post title
   // - A post may include <toyb-head></toyb-head> tag inside the <toyb-post></toyb-post> which will be added to the <head> of the post
+  // - Each HTML file in directory is treated as an external post if it contains a <toyb-external></toyb-external> tag,
+  //   this will generate a link in the navigation to an external URL (marked with an icon), but no HTML file.
+  // - An external post must include <toyb-title> and <toyb-date> tags as above, as well as a <toyb-url></toyb-url> tag
+  //   containing the absolute URL to link to. It may include <toyb-draft> and <toyb-star> tags. Other content is ignored.
   const outputDir = args['output']!
   if (args['clean']) {
     fs.rmSync(outputDir, { recursive: true, force: true })
@@ -196,20 +243,34 @@ export function main(): number {
         const fileHTML = fs.readFileSync(filePath, 'utf8')
         const fileDOM = new JSDOM(fileHTML)
         const postElement = fileDOM.window.document.querySelector('toyb-post')
-        if (postElement) {
-          const titleElement = postElement.querySelector('toyb-title')
-          if (titleElement === null || titleElement.innerHTML === '') {
-            throw new Error(`Post with input file ${filename} must have a non-empty <toyb-title> tag`)
+        const externalElement = fileDOM.window.document.querySelector('toyb-external')
+        if (postElement && externalElement) {
+          throw new Error(`Input file ${filename} cannot contain both a <toyb-post> and a <toyb-external> tag`)
+        }
+        if (externalElement) {
+          const { titleElement, dateTimestamp } = parsePostMetadata(externalElement, filename)
+          const urlElement = externalElement.querySelector('toyb-url')
+          const externalURL = urlElement?.textContent?.trim() || ''
+          if (!isValidURL(externalURL)) {
+            throw new Error(`External post with input file ${filename} must have a <toyb-url> tag containing a valid absolute URL`)
           }
-          const dateElement = postElement.querySelector('toyb-date')
-          const dateTimestamp = Date.parse(dateElement?.innerHTML || '')
-          if (Number.isNaN(dateTimestamp)) {
-            throw new Error(`Post with input file ${filename} must have a valid <toyb-date> tag`)
-          }
+          posts.push({
+            filename,
+            title: titleElement.innerHTML,
+            date: new Date(dateTimestamp),
+            headElement: null,
+            inputElement: externalElement,
+            inputDOM: fileDOM,
+            isDraft: !!externalElement.querySelector('toyb-draft'),
+            isStarred: !!externalElement.querySelector('toyb-star'),
+            externalURL,
+          })
+        } else if (postElement) {
+          const { titleElement, dateElement, dateTimestamp } = parsePostMetadata(postElement, filename)
           const headElement = postElement.querySelector('toyb-head')
           // Strip the title, date, and head elements so they don't appear directly in HTML output
           postElement.removeChild(titleElement)
-          postElement.removeChild(dateElement!)
+          postElement.removeChild(dateElement)
           if (headElement) {
             postElement.removeChild(headElement)
           }
@@ -224,6 +285,7 @@ export function main(): number {
             inputDOM: fileDOM,
             isDraft,
             isStarred,
+            externalURL: null,
           })
         } else {
           fs.writeFileSync(path.join(outputDir, 'posts', filename), fileHTML)
@@ -247,6 +309,9 @@ export function main(): number {
     return a.date.getTime() - b.date.getTime()
   })
   for (let i = 0; i < posts.length; i++) {
+    if (posts[i].externalURL !== null) {
+      continue
+    }
     const postHTML = makePostHTML(i, posts, postTemplate)
     fs.writeFileSync(path.join(outputDir, 'posts', posts[i].filename), postHTML)
     console.log(`Generated post ${path.join(outputDir, 'posts', posts[i].filename)} for title ${posts[i].title}`)
